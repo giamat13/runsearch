@@ -1,0 +1,25 @@
+{
+  "name": "runsearch",
+  "version": "1.0.0",
+  "description": "A PowerToys Run style launcher for Windows, built with Electron",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:settings": "node scripts/build-settings.js <path-to-PowerToys>/src/modules/launcher/Plugins/Microsoft.PowerToys.Run.Plugin.WindowsSettings data/windows-settings.json"
+  },
+  "keywords": ["launcher", "powertoys-run", "electron", "windows", "productivity"],
+  "os": ["win32"],
+  "license": "MIT",
+  "author": "GIAMAT13",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/giamat13/runsearch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/giamat13/runsearch/issues"
+  },
+  "homepage": "https://github.com/giamat13/runsearch#readme",
+  "devDependencies": {
+    "electron": "^45.0.0"
+  }
+}
