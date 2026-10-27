@@ -1,19 +1,31 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, nativeTheme, systemPreferences, shell } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, screen, nativeTheme, systemPreferences, shell, Tray, Menu, Notification, nativeImage } = require('electron');
 const path = require('path');
 const store = require('./lib/store');
+const settings = require('./lib/settings');
+const { route } = require('./lib/route');
 
-const PLUGINS = [
+const ALL_PLUGINS = [
   'calculator', 'unitconverter', 'program', 'folder', 'system', 'timedate', 'uri', 'websearch', 'windowwalker',
   'windowsterminal', 'shell', 'windowssettings', 'registry', 'service', 'valuegenerator', 'history', 'vscodeworkspaces', 'indexer',
+  'onenote', 'powertoys',
 ].map((n) => require(`./plugins/${n}`));
-const history = PLUGINS.find((p) => p.name === 'History');
 
-const WIDTH = 640;
+// The plugins that are switched on in Settings. Rebuilt whenever the settings change.
+let PLUGINS = [];
+function applyPlugins() {
+  const off = new Set(settings.get().disabledPlugins);
+  PLUGINS = ALL_PLUGINS.filter((p) => !off.has(p.name));
+}
+
 const MAX_SENT = 40;
+const HEIGHT = 64;
 let win = null;
 let seq = 0;
 let current = new Map(); // id -> result of the latest query
 let lastQuery = '';
+let hotkey = null; // the global shortcut that is registered right now
+let tray = null;
+let settingsWin = null;
 
 const accent = () => {
   try { return '#' + systemPreferences.getAccentColor().slice(0, 6); } catch { return '#0078d4'; }
@@ -22,23 +34,11 @@ const themeInfo = () => ({ dark: nativeTheme.shouldUseDarkColors, accent: accent
 
 // --- query pipeline -------------------------------------------------------
 
-function route(text) {
-  // A plugin keyword at the start of the query makes that plugin the only one to run.
-  const keyed = PLUGINS.filter((p) => p.keyword).sort((a, b) => b.keyword.length - a.keyword.length);
-  for (const p of keyed) {
-    if (text.startsWith(p.keyword) && (p.keyword.length > 1 || !/^[a-z0-9]/i.test(p.keyword))) {
-      // Alphabetic keywords need a space after them; symbols do not.
-      return { plugins: [p], search: text.slice(p.keyword.length).trimStart(), isKeyword: true };
-    }
-  }
-  return { plugins: PLUGINS.filter((p) => p.global), search: text.trim(), isKeyword: false };
-}
-
 // Plugin ids keep a stable ordering; each plugin's results are merged as they arrive so slow plugins don't block fast ones.
 function startQuery(text, mySeq) {
   lastQuery = text;
   const results = new Map(); // plugin name -> results[]
-  const { plugins, search, isKeyword } = route(text);
+  const { plugins, search, isKeyword } = route(PLUGINS, text);
   if (!text.trim()) { push(mySeq, []); return; }
 
   const userBoost = store.load('boosts', {});
@@ -104,6 +104,7 @@ ipcMain.on('run', async (e, { id, menu }) => {
   const bk = `${r.plugin}|${r.title}`;
   boosts[bk] = (boosts[bk] || 0) + 1;
   store.save('boosts');
+  const history = PLUGINS.find((p) => p.name === 'History');
   if (history && r.plugin !== 'History') history.record(lastQuery);
   let res;
   try { res = await action(); } catch { res = undefined; }
@@ -119,12 +120,104 @@ ipcMain.on('resize', (e, h) => {
 });
 ipcMain.on('hide', () => hide());
 
+// --- settings ---------------------------------------------------------------
+
+ipcMain.handle('settings:get', () => ({
+  ...settings.get(),
+  defaults: settings.DEFAULTS,
+  plugins: ALL_PLUGINS.map((p) => ({ name: p.name, keyword: p.keyword || '' })),
+}));
+ipcMain.handle('settings:save', (e, patch) => saveSettings(patch));
+ipcMain.on('settings:close', () => { if (settingsWin) settingsWin.close(); });
+
+function saveSettings(patch) {
+  const before = settings.get();
+  if (patch.hotkey !== undefined && patch.hotkey !== hotkey && !setHotkey(patch.hotkey)) {
+    return { ok: false, error: `Could not register ${patch.hotkey}. Another app may be using it.` };
+  }
+  const next = settings.set(patch);
+  if (next.startWithWindows !== before.startWithWindows) applyStartWithWindows(next.startWithWindows);
+  applyPlugins();
+  if (win && !win.isDestroyed()) win.setContentSize(next.width, win.getContentSize()[1]);
+  refreshTray();
+  return { ok: true, settings: next };
+}
+
+function applyStartWithWindows(enabled) {
+  const options = { openAtLogin: enabled };
+  if (app.isPackaged) {
+    // A portable build runs from a temp copy, so the login item must point at the exe the user started.
+    options.path = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+  } else {
+    // In dev mode the login item has to start Electron on this project.
+    options.args = [app.getAppPath()];
+  }
+  app.setLoginItemSettings(options);
+}
+
+function openSettings() {
+  if (settingsWin) { settingsWin.show(); settingsWin.focus(); return; }
+  settingsWin = new BrowserWindow({
+    width: 460,
+    height: 620,
+    title: 'runsearch settings',
+    minimizable: false,
+    maximizable: false,
+    show: false,
+    webPreferences: { preload: path.join(__dirname, 'preload-settings.js'), contextIsolation: true, sandbox: true },
+  });
+  settingsWin.setMenuBarVisibility(false);
+  settingsWin.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
+  settingsWin.once('ready-to-show', () => settingsWin.show());
+  settingsWin.on('closed', () => { settingsWin = null; });
+}
+
+// --- hotkey, tray and notifications ------------------------------------------
+
+function registerHotkey(accelerator) {
+  try { return globalShortcut.register(accelerator, toggle); } catch { return false; }
+}
+
+// Swaps the global shortcut. If the new one is taken, the old one stays registered so the app can still be opened.
+function setHotkey(accelerator) {
+  if (accelerator === hotkey) return true;
+  const prev = hotkey;
+  if (prev) globalShortcut.unregister(prev);
+  if (registerHotkey(accelerator)) { hotkey = accelerator; return true; }
+  if (prev && registerHotkey(prev)) return false;
+  hotkey = null;
+  return false;
+}
+
+function notify(body) {
+  if (Notification.isSupported()) new Notification({ title: 'runsearch', body }).show();
+  else console.error(`runsearch: ${body}`);
+}
+
+function createTray() {
+  tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'assets', 'icons', 'WebSearch', 'WebSearch.dark.png')));
+  tray.on('click', toggle);
+  refreshTray();
+}
+
+function refreshTray() {
+  if (!tray) return;
+  tray.setToolTip(hotkey ? `runsearch (${hotkey})` : 'runsearch (no shortcut, change it in Settings)');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show', click: () => show() },
+    { label: 'Settings...', click: () => openSettings() },
+    { label: 'Start with Windows', type: 'checkbox', checked: settings.get().startWithWindows, click: (item) => saveSettings({ startWithWindows: item.checked }) },
+    { type: 'separator' },
+    { label: 'Quit runsearch', click: () => app.quit() },
+  ]));
+}
+
 // --- window ----------------------------------------------------------------
 
 function createWindow() {
   win = new BrowserWindow({
-    width: WIDTH,
-    height: 64,
+    width: settings.get().width,
+    height: HEIGHT,
     useContentSize: true,
     show: false,
     frame: false,
@@ -141,7 +234,7 @@ function createWindow() {
   });
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.webContents.on('console-message', (_e, level, message, line, source) => { if (level >= 2) console.error(`[renderer] ${message} (${source}:${line})`); });
+  win.webContents.on('console-message', (event) => { if (event.level === 'error') console.error(`[renderer] ${event.message} (${event.sourceId}:${event.lineNumber})`); });
   win.webContents.on('preload-error', (_e, p, err) => console.error('[preload]', p, err));
   win.on('blur', () => { if (!process.argv.includes('--keep-open')) hide(); });
   nativeTheme.on('updated', () => win.webContents.send('theme', themeInfo()));
@@ -178,9 +271,13 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => show());
   app.whenReady().then(() => {
+    app.setAppUserModelId('runsearch');
+    applyPlugins();
     createWindow();
+    createTray();
+    if (!setHotkey(settings.get().hotkey)) notify(`Could not register ${settings.get().hotkey}. Another app may be using it. Change the shortcut in Settings.`);
+    refreshTray();
     for (const p of PLUGINS) p.init?.();
-    if (!globalShortcut.register('Alt+Space', toggle)) console.error('runsearch: could not register Alt+Space (already in use?)');
     win.webContents.once('did-finish-load', () => {
       if (process.argv.includes('--show')) show();
       if (process.env.RS_QUERY) setTimeout(() => win.webContents.send('set-query', process.env.RS_QUERY), 800); // dev/testing aid

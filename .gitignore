@@ -1,2 +1,17 @@
 node_modules/
 *.log
+dist/
+
+# release dashboard (tools/release_status), generated and per-session files
+tools/release_status/status.html
+tools/release_status/status-data.js
+tools/release_status/status-data.tmp
+tools/release_status/local-tests*.json
+tools/release_status/local-tests*.tmp
+tools/release_status/local-single.json
+tools/release_status/local-single.tmp
+tools/release_status/__pycache__/
+tools/release_status/activity.json
+tools/release_status/todo.json
+tools/release_status/cycle.json
+tools/release_status/archive/

@@ -1,0 +1,62 @@
+name: release
+# Started by hand (workflow_dispatch) on main. The version comes from package.json; the tag vX.Y.Z is created here.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tests:
+    # the same tests as on every push, in parallel with the build: nothing is published unless they pass
+    uses: ./.github/workflows/tests.yml
+
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Read the version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Install dependencies
+        run: npm ci
+      - name: Build the Windows files
+        run: npm run dist
+      - name: Check the files
+        shell: bash
+        run: |
+          test -f "dist/runsearch-$VERSION-setup.exe"
+          test -f "dist/runsearch-$VERSION-portable.exe"
+      - name: Upload the files
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: |
+            dist/runsearch-*-setup.exe
+            dist/runsearch-*-portable.exe
+          if-no-files-found: error
+
+  publish:
+    # runs only when the tests and the build both passed
+    needs: [tests, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the files
+        uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: dist
+      - name: Create the tag and the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release create "v$VERSION" dist/* --title "$VERSION" --notes-file "docs/release-notes-v$VERSION.md" --target "$GITHUB_SHA"

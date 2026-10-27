@@ -5,10 +5,20 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node --test \"test/*.test.js\"",
+    "dist": "electron-builder --win",
     "build:settings": "node scripts/build-settings.js <path-to-PowerToys>/src/modules/launcher/Plugins/Microsoft.PowerToys.Run.Plugin.WindowsSettings data/windows-settings.json"
   },
-  "keywords": ["launcher", "powertoys-run", "electron", "windows", "productivity"],
-  "os": ["win32"],
+  "keywords": [
+    "launcher",
+    "powertoys-run",
+    "electron",
+    "windows",
+    "productivity"
+  ],
+  "os": [
+    "win32"
+  ],
   "license": "MIT",
   "author": "GIAMAT13",
   "repository": {
@@ -20,6 +30,38 @@
   },
   "homepage": "https://github.com/giamat13/runsearch#readme",
   "devDependencies": {
-    "electron": "^45.0.0"
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "io.github.giamat13.runsearch",
+    "productName": "runsearch",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "preload-settings.js",
+      "lib/**/*",
+      "plugins/**/*",
+      "renderer/**/*",
+      "data/**/*",
+      "assets/**/*",
+      "LICENSE",
+      "THIRD_PARTY_LICENSE.txt"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "artifactName": "${productName}-${version}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
   }
 }

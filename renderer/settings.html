@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+  <title>runsearch settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <main>
+    <h1>runsearch settings</h1>
+
+    <section>
+      <label for="hotkey">Activation shortcut</label>
+      <input id="hotkey" type="text" readonly aria-describedby="hotkey-hint">
+      <p id="hotkey-hint" class="hint">Click the box and press the new shortcut. It needs at least one modifier key (Ctrl, Alt, Shift or Win).</p>
+    </section>
+
+    <section>
+      <label for="width">Window width (px)</label>
+      <input id="width" type="number" min="360" max="2000" step="1">
+    </section>
+
+    <section>
+      <label class="check"><input id="startWithWindows" type="checkbox"> Start with Windows</label>
+    </section>
+
+    <section>
+      <h2>Plugins</h2>
+      <p class="hint">Unchecked plugins are turned off.</p>
+      <ul id="plugins"></ul>
+    </section>
+
+    <p id="status" role="status"></p>
+
+    <footer>
+      <button id="defaults" type="button">Restore defaults</button>
+      <span class="spacer"></span>
+      <button id="cancel" type="button">Close</button>
+      <button id="save" type="button" class="primary">Save</button>
+    </footer>
+  </main>
+  <script src="settings.js"></script>
+</body>
+</html>
