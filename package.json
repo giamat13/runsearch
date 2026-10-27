@@ -39,6 +39,11 @@
     "directories": {
       "output": "dist"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "giamat13",
+      "repo": "runsearch"
+    },
     "files": [
       "main.js",
       "preload.js",
@@ -63,5 +68,8 @@
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }

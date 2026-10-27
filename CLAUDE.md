@@ -28,10 +28,12 @@
 
 ## עדכון אוטומטי
 
-התוכנה עדיין לא מעדכנת את עצמה. הוספת העדכון היא שינוי רגיל: קודם בדיקות, ואז שחרור.
+התוכנה מעדכנת את עצמה מה-releases של GitHub, בעזרת `electron-updater` (ספק GitHub; המאגר ציבורי, אז אין צורך ב-token).
 
-- הספרייה: `electron-updater` (ספק GitHub). המאגר ציבורי, לכן היא קוראת את ה-releases בלי token.
-- `electron-builder` כותב קובץ `latest.yml` לצד המתקין. ה-release חייב לכלול אותו, אחרת העדכון לא יראה גרסאות חדשות.
+- הבדיקה: בהפעלה, ברקע, לכל היותר פעם ביום (הזמן האחרון נשמר ב-`updates.json`). אפשר גם מהמגש: `Check for updates`. גרסה חדשה מורדת ברקע, ומותקנת כשהתוכנה נסגרת. בהורדה נשלחת התראה, ובמגש מופיע `Restart to install`.
+- רק המתקין (`runsearch-X.Y.Z-setup.exe`) מתעדכן. גרסת ה-portable לא מתעדכנת לבד ולא נבדקת.
+- האימות: `electron-updater` בודק את ה-SHA-512 שב-`latest.yml`. לכן ה-release חייב לכלול את `latest.yml`, את `runsearch-X.Y.Z-setup.exe` ואת `runsearch-X.Y.Z-setup.exe.blockmap`. ה-workflow בודק שהקבצים קיימים לפני הפרסום.
+- אחרי הפרסום (שלב 10) בודקים ש-`gh api repos/giamat13/runsearch/releases/latest --jq .tag_name` מחזיר את התגית החדשה, ושב-Release יש `latest.yml` ו-setup.
 
 ## דשבורד השחרור
 
@@ -64,7 +66,7 @@
 7. בודקים שהתגית עדיין לא קיימת: `git ls-remote --tags origin vX.Y.Z` חייב להחזיר ריק.
 8. מפעילים את השחרור: `gh workflow run release.yml --ref main`. לא דוחפים תגית ידנית: ה-workflow קורא את הגרסה, יוצר את התגית, בונה ומפרסם.
 9. עוקבים: `python tools/release_status/watch_release.py giamat13/runsearch release.yml` ברקע. הוא יוצא עם קוד 1 בכשל הראשון. אז קוראים את הלוג עם `gh run view <run-id> --log-failed`, מבטלים את ההרצה עם `gh run cancel <run-id>`, מתקנים, דוחפים ומפעילים את השחרור שוב.
-10. אחרי הצלחה בודקים שב-Release יש את הקבצים: `runsearch-X.Y.Z-setup.exe`, `runsearch-X.Y.Z-portable.exe`, ושגוף ה-Release הוא הערות השחרור.
+10. אחרי הצלחה בודקים שב-Release יש את הקבצים: `runsearch-X.Y.Z-setup.exe`, `runsearch-X.Y.Z-setup.exe.blockmap`, `runsearch-X.Y.Z-portable.exe`, `latest.yml`, ושגוף ה-Release הוא הערות השחרור. ואז בודקים את `releases/latest` (ראו "עדכון אוטומטי").
 11. בעיות שהגרסה מתקנת: מוסיפים הערה עם מספר הגרסה, ואז סוגרים אותן.
 12. מסיימים את הדשבורד: כל המשימות ב-`todo.json` במצב `done`, ושורה אחרונה ביומן.
 

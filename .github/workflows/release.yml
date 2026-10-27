@@ -32,14 +32,18 @@ jobs:
         shell: bash
         run: |
           test -f "dist/runsearch-$VERSION-setup.exe"
+          test -f "dist/runsearch-$VERSION-setup.exe.blockmap"
           test -f "dist/runsearch-$VERSION-portable.exe"
+          test -f "dist/latest.yml"
       - name: Upload the files
         uses: actions/upload-artifact@v4
         with:
           name: release-files
           path: |
             dist/runsearch-*-setup.exe
+            dist/runsearch-*-setup.exe.blockmap
             dist/runsearch-*-portable.exe
+            dist/latest.yml
           if-no-files-found: error
 
   publish:

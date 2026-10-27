@@ -3,6 +3,7 @@ const path = require('path');
 const store = require('./lib/store');
 const settings = require('./lib/settings');
 const { route } = require('./lib/route');
+const { autoUpdater } = require('electron-updater');
 
 const ALL_PLUGINS = [
   'calculator', 'unitconverter', 'program', 'folder', 'system', 'timedate', 'uri', 'websearch', 'windowwalker',
@@ -26,6 +27,8 @@ let lastQuery = '';
 let hotkey = null; // the global shortcut that is registered right now
 let tray = null;
 let settingsWin = null;
+let manualCheck = false; // true while a check the user asked for is running, so its result is reported
+let updateReady = null; // the version that is downloaded and waiting for a restart
 
 const accent = () => {
   try { return '#' + systemPreferences.getAccentColor().slice(0, 6); } catch { return '#0078d4'; }
@@ -207,9 +210,43 @@ function refreshTray() {
     { label: 'Show', click: () => show() },
     { label: 'Settings...', click: () => openSettings() },
     { label: 'Start with Windows', type: 'checkbox', checked: settings.get().startWithWindows, click: (item) => saveSettings({ startWithWindows: item.checked }) },
+    { label: 'Check for updates', click: () => checkForUpdates({ manual: true }) },
+    ...(updateReady ? [{ label: `Restart to install ${updateReady}`, click: () => autoUpdater.quitAndInstall() }] : []),
     { type: 'separator' },
     { label: 'Quit runsearch', click: () => app.quit() },
   ]));
+}
+
+// --- updates ----------------------------------------------------------------
+
+// The installed build checks GitHub for a newer release at start-up, at most once a day. A new version is downloaded in the
+// background and installed when the app quits. The portable build cannot update itself, so it is never checked.
+const UPDATE_EVERY = 24 * 60 * 60 * 1000;
+
+autoUpdater.on('update-available', (info) => { if (manualCheck) notify(`runsearch ${info.version} is available and downloading.`); });
+autoUpdater.on('update-downloaded', (info) => {
+  updateReady = info.version;
+  notify(`runsearch ${info.version} is ready. It is installed when you quit, or use Restart to install in the tray menu.`);
+  refreshTray();
+});
+autoUpdater.on('update-not-available', () => { if (manualCheck) notify('You are running the latest version.'); });
+autoUpdater.on('error', (err) => { if (manualCheck) notify(`Update check failed: ${err.message}`); });
+
+function checkForUpdates({ manual = false } = {}) {
+  manualCheck = manual;
+  if (process.env.PORTABLE_EXECUTABLE_FILE) {
+    if (manual) notify('The portable build does not update itself. Download the new version from the releases page.');
+    return;
+  }
+  if (!app.isPackaged) {
+    if (manual) notify('Updates are checked only in the installed build.');
+    return;
+  }
+  const state = store.load('updates', {});
+  if (!manual && Date.now() - (state.checkedAt || 0) < UPDATE_EVERY) return;
+  state.checkedAt = Date.now();
+  store.save('updates');
+  autoUpdater.checkForUpdates().catch(() => {}); // failures are reported by the 'error' event
 }
 
 // --- window ----------------------------------------------------------------
@@ -275,6 +312,7 @@ if (!app.requestSingleInstanceLock()) {
     applyPlugins();
     createWindow();
     createTray();
+    checkForUpdates();
     if (!setHotkey(settings.get().hotkey)) notify(`Could not register ${settings.get().hotkey}. Another app may be using it. Change the shortcut in Settings.`);
     refreshTray();
     for (const p of PLUGINS) p.init?.();
