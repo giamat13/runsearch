@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test \"test/*.test.js\"",
-    "dist": "electron-builder --win",
+    "dist": "electron-builder --win --publish never",
     "build:settings": "node scripts/build-settings.js <path-to-PowerToys>/src/modules/launcher/Plugins/Microsoft.PowerToys.Run.Plugin.WindowsSettings data/windows-settings.json"
   },
   "keywords": [
